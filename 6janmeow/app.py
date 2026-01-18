@@ -123,15 +123,18 @@ st.markdown("---")
 # Upload area
 # ---------------------
 uploaded = st.file_uploader("Upload an Excel file (.xlsx or .xls)", type=["xlsx", "xls"])
-uploaded_saved_path = None
+# We'll persist the saved path in session_state so reruns keep it
+if "uploaded_saved_path" not in st.session_state:
+    st.session_state["uploaded_saved_path"] = None
 
 if uploaded is not None:
-    # Ask the user whether to clear previous outputs before saving this upload.
-    # Default = False (safe). This prevents accidental wipes when user interacts with widgets.
-
     # Save upload (fixed filename so notebook can read the same path)
-    uploaded_saved_path = save_uploaded_file(uploaded, INPUT_DIR, filename="uploaded_file.xlsx")
-    st.success(f"Saved uploaded file as `{uploaded_saved_path.name}` in `{INPUT_DIR}`")
+    saved_path = save_uploaded_file(uploaded, INPUT_DIR, filename="uploaded_file.xlsx")
+    st.session_state["uploaded_saved_path"] = str(saved_path)
+    st.success(f"Saved uploaded file as `{saved_path.name}` in `{INPUT_DIR}`")
+
+# Local variable for convenience
+uploaded_saved_path = st.session_state.get("uploaded_saved_path")
 
 st.markdown("### Run the highlighter notebook?")
 st.info(
@@ -143,7 +146,20 @@ st.info(
 confirm_run = st.button("✅ Confirm & Run notebook", key="btn_run_notebook")
 
 if confirm_run:
-    progress = st.progress(0)
+    # Guard: ensure the user uploaded a file (saved to input_data/uploaded_file.xlsx)
+    if not uploaded_saved_path:
+        st.error("No uploaded file found. Please upload a file first (use the uploader above).")
+        st.stop()
+
+    # show quick debug info so user can see the path used
+    st.info(f"Using uploaded file: `{uploaded_saved_path}`")
+    try:
+        # list contents (helpful for remote debugging)
+        st.write("Contents of input_data:", [p.name for p in INPUT_DIR.iterdir()])
+    except Exception:
+        pass
+
+    progress = st.progress(0.0)
     progress_msg = st.empty()
 
     def on_progress(frac, msg):
@@ -153,12 +169,13 @@ if confirm_run:
             frac = 0.0
         frac = max(0.0, min(1.0, frac))
         progress.progress(frac)
+        # use info for running messages, success/error replaced below
         progress_msg.info(msg)
 
     with st.status("Running notebook…", expanded=True) as status:
         success, message = run_notebook(
             NOTEBOOK_PATH,
-            uploaded_saved_path,
+            Path(uploaded_saved_path),
             OUTPUT_DIR,
             on_progress=on_progress
         )
