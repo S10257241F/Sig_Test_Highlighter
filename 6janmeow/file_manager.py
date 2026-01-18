@@ -2,6 +2,8 @@
 from pathlib import Path
 from collections import defaultdict
 import re
+import shutil
+from typing import Optional
 
 OUTPUT_SUFFIXES = [
     "_Green_highlighted.xlsx",
@@ -14,17 +16,60 @@ OUTPUT_SUFFIXES = [
     "_SigTestTable.xlsx",
 ]
 
-def save_uploaded_file(uploaded_file, target_dir: Path, filename: str = None) -> Path:
+def save_uploaded_file(uploaded_file, target_dir: Path, filename: Optional[str] = None) -> Path:
     """
-    Save a streamlit uploaded file to target_dir with filename (or original name).
-    Returns the Path to the saved file.
+    Save a Streamlit uploaded file to target_dir.
+
+    - uploaded_file: object returned by st.file_uploader
+    - target_dir: Path to destination folder (created if missing)
+    - filename: desired filename (if None, uses the uploaded file's original name)
+
+    Returns absolute Path to saved file.
     """
+    target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    name = filename or uploaded_file.name
-    out_path = target_dir / name
-    with open(out_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    return out_path
+
+    # Determine target name: explicit filename wins, else preserve original extension
+    if filename:
+        out_name = filename
+    else:
+        # uploaded_file usually has `.name` attr (e.g., "myfile.xlsx")
+        orig = getattr(uploaded_file, "name", None) or "uploaded_file.xlsx"
+        out_name = orig
+
+    out_path = target_dir / out_name
+
+    # Ensure we start from the beginning of the file-like object
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        # Some objects may not support seek; ignore if so
+        pass
+
+    # Try the efficient path first (getbuffer), fallback to read() or copyfileobj
+    try:
+        if hasattr(uploaded_file, "getbuffer"):
+            data = uploaded_file.getbuffer()
+            with open(out_path, "wb") as fh:
+                fh.write(data)
+        else:
+            # try read() — many Streamlit UploadedFile objects support this
+            content = uploaded_file.read()
+            # If read() returns a string accidentally, encode
+            if isinstance(content, str):
+                content = content.encode()
+            with open(out_path, "wb") as fh:
+                fh.write(content)
+    except Exception:
+        # Last-resort safe copy using file-like streaming
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+        with open(out_path, "wb") as fh:
+            shutil.copyfileobj(uploaded_file, fh)
+
+    return out_path.resolve()
 
 def list_output_files(output_dir: Path):
     """
