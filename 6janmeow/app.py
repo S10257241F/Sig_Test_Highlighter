@@ -206,6 +206,12 @@ st.info(
 
 groups = group_outputs_by_table(OUTPUT_DIR)
 
+# DEBUG: show what's in the three important folders
+st.write("DEBUG INPUT_DIR:", [p.name for p in INPUT_DIR.glob("*")])
+st.write("DEBUG HIGHLIGHTED_OUTPUTS:", [p.name for p in OUTPUT_DIR.glob("*")])
+st.write("DEBUG EXPORT_DIR:", [p.name for p in EXPORT_DIR.glob("*")])
+st.write("DEBUG grouped keys:", list(groups.keys()))
+
 # ---------------------
 # Table selector (searchable dropdown)
 # ---------------------
